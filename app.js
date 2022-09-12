@@ -6,7 +6,8 @@ const ejs = require(`ejs`);
 const bodyParser = require("body-parser");
 const mongoose = require(`mongoose`);
 var encrypt = require('mongoose-encryption');
-var md5 = require('md5');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 
 
@@ -47,13 +48,14 @@ userModel.findOne({userName:req.body.username},(err,foudOne)=>{
     if(foudOne == null){
         res.redirect(`/login`)
     }
-    else if(foudOne.password==md5(req.body.password)){
-        res.redirect(`/`)
-    }
     else{
-        res.redirect(`/login`)
-
+        bcrypt.compare(req.body.password , foudOne.password , function(err, result) {
+            // result == true
+            if(result==true){res.redirect(`/`)}
+            else{res.redirect(`/`)}
+        });
     }
+ 
 })
 });
 
@@ -63,12 +65,17 @@ app.get(`/register`,(req,res)=>{
 
 });
 app.post(`/register`,(req,res)=>{
-const user = new userModel({
-    userName: req.body.username,
-    password: md5(req.body.password)
-})
-user.save();
-res.redirect(`/`);
+
+    bcrypt.hash( req.body.password , saltRounds, function(err, hash) {
+        // Store hash in your password DB.
+        const user = new userModel({
+            userName: req.body.username,
+            password: hash
+        })
+        user.save();
+        res.redirect(`/`);
+    });
+
 });
 
 
