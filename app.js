@@ -8,7 +8,9 @@ const mongoose = require(`mongoose`);
 const session = require('express-session')
 const passport = require('passport')
 const passportLocalMongoose = require('passport-local-mongoose');
-var LocalStrategy = require('passport-local').Strategy;
+const LocalStrategy = require('passport-local').Strategy;
+const GoogleStrategy = require(`passport-google-oauth20`).Strategy;
+const findOrCreate = require('mongoose-findorcreate')
 
 
 
@@ -33,12 +35,16 @@ app.use(passport.session());
 
 mongoose.connect(`mongodb://localhost:27017/userDB`);
 
-const userSchema = new  mongoose.Schema({
+
+const userSchema = new mongoose.Schema({
     userName : String,
-    password: String
+    password: String,
+    googleId: String,
+
 });
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 
 const userModel = new mongoose.model(`users`, userSchema);
@@ -46,23 +52,83 @@ const userModel = new mongoose.model(`users`, userSchema);
 passport.use(new LocalStrategy(userModel.authenticate()));
 
 // use static serialize and deserialize of model for passport session support
-passport.serializeUser(userModel.serializeUser());
-passport.deserializeUser(userModel.deserializeUser());
+
 passport.serializeUser(function(user, done) {
-    done(null, user.id);
-  });
-  
-  passport.deserializeUser(function(id, done) {
-    User.findOne(id, function (err, user) {
-      done(err, user);
+    done(null, user.id); 
+   // where is this user.id going? Are we supposed to access this anywhere?
+});
+
+// used to deserialize the user
+passport.deserializeUser(function(id, done) {
+    userModel.findById(id, function(err, user) {
+        done(err, user);
     });
-  });
+});
+
+  
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+    scope: ['profile', 'email']
+
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+
+/*
+    userModel.findOne({googleId:profile.id},(err,foundObj)=>{
+        if(foundObj==null){
+            const user = new userModel({
+                id:profile.id
+            })
+            user.save();
+        }
+
+    })*/
+
+
+    userModel.findOrCreate({ googleId: profile.id }, function (err, user) {
+
+      console.log(user);
+      return cb(err, user);
+
+    });
+  }
+));
 
 
 app.get(`/`,(req,res)=>{
     res.render(`home`  );
-
 });
+
+
+
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] })
+  );
+
+
+
+  app.get('/auth/google/secrets', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
+
+  app.get(`/secrets`,(req,res)=>{
+    if(req.isAuthenticated()){
+        res.render(`secrets`);
+    }else{
+        res.redirect(`/`);
+    }})
+
+
+
+
 
 app.get(`/login`,(req,res)=>{
     res.render(`login`);
@@ -86,15 +152,7 @@ app.post(`/login`,(req,res)=>{
 
 });
 
-app.get(`/secrets`,(req,res)=>{
 
-if(req.isAuthenticated()){
-    res.render(`secrets`);
-}else{
-    res.redirect(`/`);
-}
-
-})
 
 
 app.get(`/register`,(req,res)=>{
